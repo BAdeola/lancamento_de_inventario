@@ -1,24 +1,27 @@
+// src/app.ts
 import express from 'express';
 import cors from 'cors';
-// Importaremos as rotas e a conexão do banco aqui depois
+import router from './routes/inventario.route.js';
 
 const app = express();
 
-// Middlewares
-app.use(cors());
-app.use(express.json()); // Para o Express entender JSON no corpo das requisições
+// Middlewares essenciais
+app.use(cors()); // Permite que o React (geralmente porta 5173) fale com o Node (3000)
+app.use(express.json()); // Habilita o recebimento de JSON no body das requisições
 
-// Rota de Teste (Health Check)
-app.get('/status', (req, res) => {
-    res.status(200).json({ message: 'Servidor rodando e pronto para o inventário!' });
+// Prefixo opcional /api para manter organizado
+app.use('/api', router);
+
+// Rota de erro para caminhos não encontrados
+app.use((req, res) => {
+    res.status(404).json({ message: "Rota não encontrada no servidor de inventário." });
 });
-
-// Aqui entraremos com as rotas de inventário (ex: app.use('/api/inventario', inventarioRoutes))
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor voando na porta ${PORT}`);
+    console.log(`✅ Back-end conectado ao SQL 2005 rodando na porta ${PORT}`);
+    console.log(`📍 Endpoint base: http://localhost:${PORT}/api/inventario`);
 });
 
 export default app;

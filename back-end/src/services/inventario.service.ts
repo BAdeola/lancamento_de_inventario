@@ -5,8 +5,8 @@ import { InventarioRepository } from '../repositories/inventario.repository.js';
 export class InventarioService {
     private repository = new InventarioRepository();
 
-    async listarResumoPorGrupo(data: string) {
-        const itens = await this.repository.getInventarioPorData(data);
+    async listarResumoPorGrupo() {
+        const itens = await this.repository.getInventario();
 
         // Se não vier nada, já paramos aqui
         if (itens.length === 0) return null;
@@ -41,5 +41,43 @@ export class InventarioService {
             totalItens: itens.length,
             grupos
         };
-    }
+    };
+
+    async gravarLancamento(data: string, dados: any) {
+        let { 
+            uniloj, gramatura, qtddsp, qtduni, 
+            qtduni_cadpro, cusmed, codgru, codpro 
+        } = dados;
+
+        const unidadesPeso = ["KG", "LITRO", "LT"];
+        const isPeso = unidadesPeso.includes(uniloj?.toUpperCase());
+        
+        if (!isPeso) {
+            gramatura = 1;
+        }
+
+        let qtdinf = 0;
+        let pestot = 0;
+        let custot = 0;
+
+        if (isPeso) {
+            qtdinf = (qtddsp * qtduni_cadpro * gramatura) + qtduni;
+            pestot = qtdinf;
+            custot = qtdinf * cusmed;
+        } else {
+            qtdinf = (qtddsp * qtduni_cadpro) + qtduni;
+            custot = (qtddsp * qtduni_cadpro * cusmed) + (qtduni * cusmed);
+            pestot = 0;
+        }
+
+        const novoTotalGeral = await this.repository.updateItemInventario(data, {
+            qtddsp, qtduni, qtdinf, pestot, codgru, codpro
+        });
+
+        return {
+            success: true,
+            itemAtualizado: { qtdinf, pestot, custot },
+            totalGeralSistema: novoTotalGeral
+        };
+    };
 }
