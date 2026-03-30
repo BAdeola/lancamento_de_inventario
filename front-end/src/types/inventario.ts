@@ -1,4 +1,7 @@
+// src/types/inventario.ts
+
 export interface IInventarioItem {
+    // --- CAMPOS QUE JÁ ESTAVAM ---
     codgru: number;
     codpro: number;
     nomgru: string;
@@ -15,23 +18,25 @@ export interface IInventarioItem {
     qtddsp_cadpro: number;
     data: string;
     sequencia_dia: number;
+    cod_prod_bx?: number; 
 }
 
 export interface IRespostaInventario {
     dataInventario: string;
     totalItens: number;
     grupos: Record<string, IInventarioItem[]>;
-};
+}
 
-// models/Inventario.dto.ts
 export interface ILancamentoInput {
-    data: string;          // Chave primária no SQL 2005
-    codgru: number;        // Chave primária
-    codpro: number;        // Chave primária
-    qtddsp: number;        // Display (informado pelo usuário)
-    qtduni: number;        // Unidade (informado pelo usuário)
-    uniloj: string;        // Necessário para o cálculo de peso
-    gramatura: number;     // Fator de conversão
-    qtduni_cadpro: number; // Unidades por display no cadastro
-    cusmed: number;        // Custo médio para o Total Geral
-};
+    data: string;          
+    codgru: number;        
+    codpro: number;        
+    qtddsp: number;        
+    qtduni: number;
+    qtdinf: number; 
+    pestot: number;     
+    uniloj: string;        
+    gramatura: number;     
+    qtduni_cadpro: number; 
+    cusmed: number;        
+}

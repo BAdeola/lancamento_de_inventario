@@ -5,20 +5,40 @@ import sql from 'mssql';
 export class InventarioRepository {
     async getInventario() {
         const pool = await poolPromise;
-        if (!pool) throw new Error("Não foi possível estabelecer conexão com o SQL Server (getInventarioPorData).");
 
-        const result = await pool.request()
-            .query(`
-                SELECT 
-                    codgru, codpro, nomgru, nompro, uniloj, gramatura, 
-                    qtddsp, qtduni, qtdinf, qtddsp_cadpro, qtduni_cadpro, 
-                    cusmed, pestot, situac
-                FROM INVENT1
-                WHERE situac = 'ABERTO'
-                ORDER BY nomgru, nompro
-            `);
-        return result.recordset;
-    };
+        if (!pool) {
+            throw new Error("Conexão com o banco de dados não disponível.");
+        }
+
+        const result = await pool.request().query(`
+            SELECT 
+                I.codgru, I.codpro, I.nomgru, I.nompro, I.uniloj, 
+                I.gramatura, I.qtddsp, I.qtduni, I.qtdinf, 
+                I.qtddsp_cadpro, I.qtduni_cadpro, I.cusmed, I.pestot,
+                I.data, I.sequencia_dia
+            FROM INVENT1 AS I (NOLOCK)
+            INNER JOIN INVENT AS C (NOLOCK) ON I.sequencia_dia = C.sequencia_dia
+            WHERE C.situac = 'ABERTA'
+        `);
+
+        // MAPEAMENTO EXPLÍCITO: Isso evita que colunas "pulem" de lugar
+        return result.recordset.map((row: any) => ({
+            data: row.data,
+            codgru: Number(row.codgru),
+            codpro: Number(row.codpro),
+            nomgru: row.nomgru?.trim(),
+            nompro: row.nompro?.trim(),
+            uniloj: row.uniloj?.trim(),
+            gramatura: Number(row.gramatura),
+            qtddsp: Number(row.qtddsp),
+            qtduni: Number(row.qtduni),
+            qtdinf: Number(row.qtdinf),
+            qtddsp_cadpro: Number(row.qtddsp_cadpro),
+            qtduni_cadpro: Number(row.qtduni_cadpro),
+            cusmed: Number(row.cusmed),
+            pestot: Number(row.pestot)
+        }));
+    }
 
     async updateItemInventario(data: string, item: any) {
         const pool = await poolPromise;

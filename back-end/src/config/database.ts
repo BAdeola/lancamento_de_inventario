@@ -1,14 +1,14 @@
 import sql from "mssql";
 
 const config: sql.config = {
-    user: 'seu_usuario',
-    password: 'sua_senha',
+    user: 'sa',
+    password: '123',
     server: 'localhost', // ou o IP do servidor
-    database: 'SeuBanco',
+    database: 'OCSFF',
     options: {
         encrypt: false, // Geralmente false para SQL 2005
         trustServerCertificate: true, 
-        instanceName: 'SQLEXPRESS' // Se houver instância
+        //instanceName: 'SQLEXPRESS'
     },
     port: 1433
 };

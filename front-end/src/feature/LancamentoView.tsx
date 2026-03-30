@@ -1,148 +1,251 @@
 import { useState, useEffect } from 'react';
-import { Tabela } from '../components/Tabela/Tabela';
+import { Tabela, calcularTotaisItem } from '../components/Tabela/Tabela';
 import { TouchInput } from '../components/Touch-Input/TouchInput';
-import type { IItemInventario } from '../components/Tabela/interface';
 import { Teclado } from '../components/Teclado/Teclado';
+import { inventarioService } from '../services/inventario.service';
+import type { IInventarioItem, ILancamentoInput } from '../types/inventario';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 
-const itensIniciais: IItemInventario[] = [
-    { id: 1, nome: 'Café Torrado 500g', emb: 10, dispPeso: 5, qtdTotal: 50, pesoTotal: 25, totRs: 1250.00 },
-    { id: 2, nome: 'Açúcar Refinado 1kg', emb: 20, dispPeso: 2.5, qtdTotal: 40, pesoTotal: 40, totRs: 200.00 },
-];
+export interface LancamentoViewProps {
+    categoria: string;
+    itensIniciais: IInventarioItem[];
+    dataInventario: string;
+}
 
-export function LancamentoView({ categoria }: { categoria: string }) {
-    const [itens, setItens] = useState<IItemInventario[]>(itensIniciais);
-    const [itemAtivo, setItemAtivo] = useState<number>(itensIniciais[0].id);
+export function LancamentoView({ categoria, itensIniciais, dataInventario }: LancamentoViewProps) {
+    // ESTADOS PRINCIPAIS
+    const [itens, setItens] = useState<IInventarioItem[]>(itensIniciais);
+    const [itemAtivoId, setItemAtivoId] = useState<number>(itensIniciais[0]?.codpro);
     const [inputAtivo, setInputAtivo] = useState<'emb' | 'disp'>('emb');
-
     const [visor, setVisor] = useState<string>("0");
-    const itemAtual = itens.find(i => i.id === itemAtivo) || itens[0];
+    
+    // ESTADOS DE FEEDBACK (UX)
+    const [estaSalvando, setEstaSalvando] = useState(false);
+    const [ultimoSalvo, setUltimoSalvo] = useState<number | null>(null);
 
-    // =======================================================================
-    // FUNÇÃO DA MÁSCARA (ATM Style)
-    // Transforma "5" em "0,05" | "50" em "0,50" | "1025" em "10,25"
-    // =======================================================================
-    const formatarMascaraPeso = (valorRaw: string | number) => {
-        // Se receber um número do banco (ex: 2.5), multiplica por 100 para virar "250"
-        let digits = typeof valorRaw === 'number' ? (valorRaw * 100).toFixed(0) : valorRaw;
+    const itemAtual = itens.find(i => i.codpro === itemAtivoId) || itens[0];
+
+    const handleMudarFoco = (novoFoco: 'emb' | 'disp') => {
+        if (inputAtivo === novoFoco) return; // Se já está focado, não faz nada
+
+        // 1. Muda o foco
+        setInputAtivo(novoFoco);
+
+        // 2. Já carrega o valor correto no visor NA MESMA HORA
+        // Lembre-se da nossa regra: emb = qtddsp, disp = qtduni
+        const valorOriginal = novoFoco === 'emb' ? itemAtual.qtddsp : itemAtual.qtduni;
         
-        // Garante que só tem números e preenche com zeros à esquerda se tiver menos de 3 dígitos
-        digits = digits.replace(/\D/g, '').padStart(3, '0');
-        
-        const inteiro = digits.slice(0, -2); // Pega tudo, exceto os dois últimos
-        const decimal = digits.slice(-2);    // Pega os dois últimos
-        
-        // Adiciona ponto de milhar no número inteiro (ex: 1.000,00)
-        const inteiroFormatado = parseInt(inteiro, 10).toLocaleString('pt-BR');
-        
-        return `${inteiroFormatado},${decimal}`;
+        if (novoFoco === 'disp') {
+            setVisor(String(Math.round(valorOriginal * 10000))); 
+        } else {
+            setVisor(String(valorOriginal));
+        }
     };
-
-    // Sincroniza o visor quando o usuário clica em um campo ou item diferente
+    // Sincroniza o visor com o valor real do campo quando muda o foco ou o item
     useEffect(() => {
-        const valorAtualDoCampo = itemAtual[inputAtivo === 'emb' ? 'emb' : 'dispPeso'];
+        if (!itemAtual) return;
+        
+        // AQUI ESTÁ A CORREÇÃO DA INVERSÃO:
+        // Se for Embalagem, puxa o qtddsp. Se for Display/Peso, puxa o qtduni.
+        const valorOriginal = inputAtivo === 'emb' ? itemAtual.qtddsp : itemAtual.qtduni;
         
         if (inputAtivo === 'disp') {
-            // Se for peso, transforma "5" em "500" para a máscara iniciar como "5,00"
-            setVisor((valorAtualDoCampo * 100).toFixed(0));
+            // Se for o input de peso, multiplica por 100 para a máscara do teclado funcionar
+            const valorNumerico = Math.round(valorOriginal * 100);
+            setVisor(String(valorNumerico));
         } else {
-            setVisor(String(valorAtualDoCampo));
+            // Se for embalagem (inteiro), joga direto pro visor
+            setVisor(String(valorOriginal));
         }
-    }, [itemAtivo, inputAtivo, itemAtual]);
+    }, [itemAtivoId, itemAtual]);
 
-    // Lida com a digitação do teclado
+    // Máscara de Peso (ATM Style)
+    const formatarMascaraPeso = (valorRaw: string) => {
+        // Garante no mínimo 5 dígitos (ex: o número "1" vira "00001")
+        const digits = valorRaw.replace(/\D/g, '').padStart(5, '0');
+        
+        // Pega os últimos 4 dígitos para os decimais
+        const decimal = digits.slice(-4);
+        
+        // Pega tudo o que sobrar para o número inteiro
+        const inteiro = parseInt(digits.slice(0, -4), 10).toLocaleString('pt-BR');
+        
+        return `${inteiro},${decimal}`;
+    };
+
     const handleKeyPress = (key: string) => {
         setVisor(prev => {
             if (key === 'C') return '0';
             if (key === 'DEL') return prev.length <= 1 ? '0' : prev.slice(0, -1);
-            if (prev === '0') return key; // Substitui o 0 inicial
-            if (prev.length >= 8) return prev; // Trava de segurança de caracteres
+            if (prev === '0') return key;
+            if (prev.length >= 8) return prev;
             return prev + key;
         });
     };
 
-    // Grava o valor no estado da Tabela
-    const handleConfirmarValor = () => {
-        // Se for embalagem, salva o número puro. Se for peso, divide por 100.
-        const novoValor = inputAtivo === 'disp' ? Number(visor) / 100 : Number(visor);
+    // FUNÇÃO PARA SALVAR NO SQL 2005
+    const handleConfirmarValor = async () => {
+        // 1. Determina o valor numérico
+        const valorDigitado = inputAtivo === 'disp' ? Number(visor) / 10000 : Number(visor);
 
-        setItens(itensAnteriores => 
-            itensAnteriores.map(item => {
-                if (item.id === itemAtivo) {
-                    return {
-                        ...item,
-                        [inputAtivo === 'emb' ? 'emb' : 'dispPeso']: novoValor,
-                    };
-                }
-                return item;
-            })
-        );
-        
-        // Pulo automático de foco
-        if (inputAtivo === 'emb') setInputAtivo('disp');
-        else setInputAtivo('emb'); 
+        // 2. Criamos a nova lista atualizando o valor digitado
+        const novosItens = itens.map(item => {
+            if (item.codpro === itemAtivoId) {
+                // Atualiza apenas o emb ou disp
+                const itemModificado = { 
+                    ...item, 
+                    [inputAtivo === 'emb' ? 'qtddsp' : 'qtduni']: valorDigitado 
+                };
+
+                // 🌟 USA A FUNÇÃO QUE JÁ CRIAMOS PARA APLICAR A REGRA COBOL!
+                const totais = calcularTotaisItem(itemModificado);
+                
+                // Atualiza o item com os cálculos exatos que vieram da função
+                itemModificado.qtdinf = totais.qtdinf;
+                itemModificado.pestot = totais.pestot;
+                // Se precisar do custo médio no banco, pode passar também: itemModificado.cusmed = totais.custot;
+
+                return itemModificado;
+            }
+            return item;
+        });
+
+        // Atualiza a tabela na tela
+        setItens(novosItens);
+
+        // Busca o item atualizado (sem erro de 'never')
+        const itemCalculado = novosItens.find(i => i.codpro === itemAtivoId);
+
+        // 3. SALVAMENTO IMEDIATO
+        if (itemCalculado) {
+            try {
+                setEstaSalvando(true);
+                const payload: ILancamentoInput = {
+                    data: dataInventario,
+                    codgru: itemCalculado.codgru,
+                    codpro: itemCalculado.codpro,
+                    qtddsp: itemCalculado.qtddsp,
+                    qtduni: itemCalculado.qtduni,
+                    qtdinf: itemCalculado.qtdinf,
+                    pestot: itemCalculado.pestot,
+                    uniloj: itemCalculado.uniloj,
+                    gramatura: itemCalculado.gramatura,
+                    qtduni_cadpro: itemCalculado.qtduni_cadpro,
+                    cusmed: itemCalculado.cusmed
+                };
+
+                await inventarioService.salvarLancamento(payload);
+                setUltimoSalvo(itemAtivoId);
+                setTimeout(() => setUltimoSalvo(null), 2000);
+            } catch (err) {
+                console.error("Erro ao salvar no banco:", err);
+            } finally {
+                setEstaSalvando(false);
+            }
+        }
+
+        // 4. PULO DE FOCO E CORREÇÃO DOS ZEROS
+        const proximoFoco = inputAtivo === 'emb' ? 'disp' : 'emb';
+        setInputAtivo(proximoFoco);
+
+        if (itemCalculado) {
+            const valorDoNovoFoco = proximoFoco === 'emb' ? itemCalculado.qtddsp : itemCalculado.qtduni;
+            
+            if (proximoFoco === 'disp') {
+                setVisor(String(Math.round(valorDoNovoFoco * 10000)));
+            } else {
+                setVisor(String(valorDoNovoFoco));
+            }
+        }
     };
 
     return (
-        <div className="flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 h-full overflow-hidden">
-            
-            <div className="px-6 pt-4 pb-3 shrink-0 border-b border-gray-50">
-                <h2 className="text-xl font-bold text-slate-800 tracking-tight">{categoria}</h2>
+        <div className="flex flex-col bg-white rounded-3xl shadow-sm border border-gray-100 h-full overflow-hidden relative">
+            <div className="px-6 py-4 border-b border-gray-50 bg-slate-50/30 flex justify-between items-center shrink-0">
+                <div>
+                    <h2 className="text-xl font-bold text-slate-800">{categoria}</h2>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">
+                        Listagem de Produtos
+                    </p>
+                </div>
+                <div className="text-right">
+                    <span className="text-lg font-black text-orange-500">
+                        {itens.length}
+                    </span>
+                    <span className="text-xs text-slate-400 ml-1 font-bold">ITENS</span>
+                </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0">
-
-                <div className="flex-1 min-h-37.5 overflow-y-auto border-b border-gray-200">
-                    <Tabela 
-                        itens={itens} 
-                        itemAtivoId={itemAtivo} 
-                        onSelecionarItem={setItemAtivo} 
-                    />
+            {/* Status de Salvamento (Overlay sutil) */}
+            {estaSalvando && (
+                <div className="absolute top-4 right-6 flex items-center gap-2 text-orange-500 font-bold text-sm bg-orange-50 px-3 py-1 rounded-full animate-pulse z-20">
+                    <Loader2 size={16} className="animate-spin" />
+                    Gravando SQL...
                 </div>
+            )}
 
-                <div className="shrink-0 bg-slate-50/50 p-4 sm:p-6 flex items-center justify-center">
-                    <div className="grid grid-cols-2 gap-4 lg:gap-8 w-full max-w-4xl mx-auto relative">
-                        
-                        {/* ====================================================
-                            LADO ESQUERDO: INPUTS
-                            ==================================================== */}
-                        <div className="flex flex-col items-center justify-center gap-3 w-full px-2 sm:px-4">
-                            
+            {/* Metade Superior: Tabela */}
+            <div className="h-1/2 min-h-37.5 overflow-y-auto border-b border-gray-100">
+                <Tabela 
+                    itens={itens} 
+                    itemAtivoId={itemAtivoId} // Este estado deve conter o codpro
+                    onSelecionarItem={setItemAtivoId} 
+                />
+            </div>
+
+            {/* Metade Inferior: Controles */}
+            <div className="h-1/2 shrink-0 bg-slate-50/40 p-4 sm:p-6">
+                <div className="grid grid-cols-2 gap-4 lg:gap-12 w-full h-full max-w-5xl mx-auto items-center">
+                    
+                    {/* Painel Esquerdo: Inputs e Feedback */}
+                    <div className="flex flex-col gap-3 justify-center items-center">
+                        <div className="w-full max-w-75 relative">
                             <TouchInput 
-                                label="Embalagem"
-                                // Embalagem continua sem máscara (Número inteiro)
-                                valor={inputAtivo === 'emb' ? visor : itemAtual.emb}
+                                label="Embalagem (Unidades)"
+                                // Se ativo usa o visor, se inativo usa o qtddsp
+                                valor={inputAtivo === 'emb' ? visor : String(itemAtual.qtddsp)} 
                                 isAtivo={inputAtivo === 'emb'}
-                                onClick={() => setInputAtivo('emb')}
+                                onClick={() => handleMudarFoco('emb')}
                             />
+                        </div>
+                        
+                        <div className="w-full max-w-75 relative">
                             <TouchInput 
-                                label="Display/Peso (kg)"
-                                // O SEGREDO NA TELA: Aplicamos a máscara aqui!
-                                valor={inputAtivo === 'disp' 
+                                label="Display / Peso (kg)"
+                                // Se ativo usa o visor, se inativo usa o qtduni formatado
+                                valor={
+                                    inputAtivo === 'disp' 
                                     ? formatarMascaraPeso(visor) 
-                                    : formatarMascaraPeso(itemAtual.dispPeso)
+                                    : formatarMascaraPeso(String(Math.round(itemAtual.qtduni * 10000)))
                                 }
                                 isAtivo={inputAtivo === 'disp'}
-                                onClick={() => setInputAtivo('disp')}
+                                onClick={() => handleMudarFoco('disp')}
                             />
-
-                            <button 
-                                onClick={handleConfirmarValor}
-                                className="w-full max-w-70 py-3 lg:py-4 mt-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-lg lg:text-xl font-bold shadow-md active:bg-orange-700 transition-colors"
-                            >
-                                CONFIRMAR
-                            </button>
-
                         </div>
 
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-px h-full bg-gray-200 hidden sm:block"></div>
+                        <button 
+                            onClick={handleConfirmarValor}
+                            disabled={estaSalvando}
+                            className={`w-full max-w-75 py-4 rounded-2xl font-bold text-xl shadow-lg transition-all flex items-center justify-center gap-2
+                                ${ultimoSalvo === itemAtivoId 
+                                    ? 'bg-green-500 text-white' 
+                                    : 'bg-orange-500 hover:bg-orange-600 text-white active:scale-95'}
+                                ${estaSalvando ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            {ultimoSalvo === itemAtivoId ? (
+                                <><CheckCircle2 size={24} /> SALVO!</>
+                            ) : (
+                                'CONFIRMAR'
+                            )}
+                        </button>
+                    </div>
 
-                        {/* ====================================================
-                            LADO DIREITO: TECLADO
-                            ==================================================== */}
-                        <div className="flex items-center justify-center w-full px-2 sm:px-4">
-                            <Teclado onKeyPress={handleKeyPress} />
-                        </div>
+                    {/* Divisória Visual */}
+                    <div className="absolute left-1/2 top-[75%] -translate-y-1/2 w-px h-1/3 bg-gray-200 hidden lg:block"></div>
 
+                    {/* Painel Direito: Teclado */}
+                    <div className="flex items-center justify-center">
+                        <Teclado onKeyPress={handleKeyPress} />
                     </div>
                 </div>
             </div>

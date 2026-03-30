@@ -1,15 +1,6 @@
-export interface IItemInventario {
-  id: number;
-  nome: string;
-  emb: number;
-  dispPeso: number;
-  qtdTotal: number;
-  pesoTotal: number;
-  totRs: number;
-}
-
+import type { IInventarioItem } from '../../types/inventario';
 export interface TabelaProps {
-  itens: IItemInventario[];
-  itemAtivoId: number | null;
+  itens: IInventarioItem[]; // <-- Mude de IItemInventario para IInventarioItem
+  itemAtivoId: number;
   onSelecionarItem: (id: number) => void;
 }
