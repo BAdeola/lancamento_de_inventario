@@ -10,9 +10,10 @@ export interface LancamentoViewProps {
     categoria: string;
     itensIniciais: IInventarioItem[];
     dataInventario: string;
+    onItemAtualizado?: (item: IInventarioItem) => void;
 }
 
-export function LancamentoView({ categoria, itensIniciais, dataInventario }: LancamentoViewProps) {
+export function LancamentoView({ categoria, itensIniciais, dataInventario, onItemAtualizado }: LancamentoViewProps) {
     // ESTADOS PRINCIPAIS
     const [itens, setItens] = useState<IInventarioItem[]>(itensIniciais);
     const [itemAtivoId, setItemAtivoId] = useState<number>(itensIniciais[0]?.codpro);
@@ -24,6 +25,9 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
     const [ultimoSalvo, setUltimoSalvo] = useState<number | null>(null);
 
     const itemAtual = itens.find(i => i.codpro === itemAtivoId) || itens[0];
+
+    const unilojAtual = itemAtual?.uniloj?.trim().toUpperCase() || '';
+    const isPesoOuLitroAtual = ['KG', 'LITRO', 'LT', 'L'].includes(unilojAtual);
 
     const handleMudarFoco = (novoFoco: 'emb' | 'disp') => {
         if (inputAtivo === novoFoco) return; // Se já está focado, não faz nada
@@ -86,7 +90,12 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
     // FUNÇÃO PARA SALVAR NO SQL 2005
     const handleConfirmarValor = async () => {
         // 1. Determina o valor numérico
-        const valorDigitado = inputAtivo === 'disp' ? Number(visor) / 10000 : Number(visor);
+        let valorDigitado;
+        if (inputAtivo === 'disp' && isPesoOuLitroAtual) {
+            valorDigitado = Number(visor) / 10000; // Máscara de 4 casas
+        } else {
+            valorDigitado = Number(visor); // Inteiro puro
+        }
 
         // 2. Criamos a nova lista atualizando o valor digitado
         const novosItens = itens.map(item => {
@@ -120,7 +129,7 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
         if (itemCalculado) {
             try {
                 setEstaSalvando(true);
-                const payload: ILancamentoInput = {
+                const payload: ILancamentoInput ={
                     data: dataInventario,
                     codgru: itemCalculado.codgru,
                     codpro: itemCalculado.codpro,
@@ -135,6 +144,12 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
                 };
 
                 await inventarioService.salvarLancamento(payload);
+            
+                // 🌟 O PULO DO GATO: Avisa o "Cérebro" para buscar os dados atualizados em silêncio!
+                if (onItemAtualizado) {
+                    onItemAtualizado?.(itemCalculado);
+                }
+
                 setUltimoSalvo(itemAtivoId);
                 setTimeout(() => setUltimoSalvo(null), 2000);
             } catch (err) {
@@ -151,7 +166,8 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
         if (itemCalculado) {
             const valorDoNovoFoco = proximoFoco === 'emb' ? itemCalculado.qtddsp : itemCalculado.qtduni;
             
-            if (proximoFoco === 'disp') {
+            // Só multiplica por 10000 se o próximo foco for o display E o produto for de peso
+            if (proximoFoco === 'disp' && isPesoOuLitroAtual) {
                 setVisor(String(Math.round(valorDoNovoFoco * 10000)));
             } else {
                 setVisor(String(valorDoNovoFoco));
@@ -194,29 +210,32 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
             </div>
 
             {/* Metade Inferior: Controles */}
-            <div className="h-1/2 shrink-0 bg-slate-50/40 p-4 sm:p-6">
-                <div className="grid grid-cols-2 gap-4 lg:gap-12 w-full h-full max-w-5xl mx-auto items-center">
+            <div className="h-1/2 shrink-0 bg-slate-50/40 p-2 overflow-hidden relative w-full flex items-center justify-center">
+                
+                {/* Container principal mantendo a linha */}
+                <div className="flex flex-row w-full h-full max-w-5xl mx-auto items-center justify-between px-2 sm:px-4">
                     
-                    {/* Painel Esquerdo: Inputs e Feedback */}
-                    <div className="flex flex-col gap-3 justify-center items-center">
-                        <div className="w-full max-w-75 relative">
+                    {/* 📦 LADO ESQUERDO: Usando flex-1 e min-w-0 para NUNCA vazar */}
+                    <div className="flex-1 flex flex-col gap-2 sm:gap-3 justify-center items-center min-w-0">
+                        <div className="w-full max-w-65 relative">
                             <TouchInput 
                                 label="Embalagem (Unidades)"
-                                // Se ativo usa o visor, se inativo usa o qtddsp
                                 valor={inputAtivo === 'emb' ? visor : String(itemAtual.qtddsp)} 
                                 isAtivo={inputAtivo === 'emb'}
                                 onClick={() => handleMudarFoco('emb')}
                             />
                         </div>
                         
-                        <div className="w-full max-w-75 relative">
+                        <div className="w-full max-w-65 relative">
                             <TouchInput 
-                                label="Display / Peso (kg)"
-                                // Se ativo usa o visor, se inativo usa o qtduni formatado
+                                label={isPesoOuLitroAtual ? "Display / Peso (kg)" : "Display (Unidades)"}
                                 valor={
                                     inputAtivo === 'disp' 
-                                    ? formatarMascaraPeso(visor) 
-                                    : formatarMascaraPeso(String(Math.round(itemAtual.qtduni * 10000)))
+                                    ? (isPesoOuLitroAtual ? formatarMascaraPeso(visor) : visor)
+                                    : (isPesoOuLitroAtual 
+                                        ? formatarMascaraPeso(String(Math.round(itemAtual.qtduni * 10000))) 
+                                        : String(itemAtual.qtduni)
+                                      )
                                 }
                                 isAtivo={inputAtivo === 'disp'}
                                 onClick={() => handleMudarFoco('disp')}
@@ -226,7 +245,7 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
                         <button 
                             onClick={handleConfirmarValor}
                             disabled={estaSalvando}
-                            className={`w-full max-w-75 py-4 rounded-2xl font-bold text-xl shadow-lg transition-all flex items-center justify-center gap-2
+                            className={`w-full max-w-65 py-3 rounded-2xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2
                                 ${ultimoSalvo === itemAtivoId 
                                     ? 'bg-green-500 text-white' 
                                     : 'bg-orange-500 hover:bg-orange-600 text-white active:scale-95'}
@@ -240,13 +259,14 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario }: Lan
                         </button>
                     </div>
 
-                    {/* Divisória Visual */}
-                    <div className="absolute left-1/2 top-[75%] -translate-y-1/2 w-px h-1/3 bg-gray-200 hidden lg:block"></div>
+                    {/* LINHA DIVISÓRIA: Espremida no meio dos dois com margem segura */}
+                    <div className="w-px h-3/4 bg-gray-300 shrink-0 mx-2 sm:mx-4"></div>
 
-                    {/* Painel Direito: Teclado */}
-                    <div className="flex items-center justify-center">
+                    {/* 📦 LADO DIREITO: Usando flex-1 e min-w-0 também */}
+                    <div className="flex-1 h-full flex items-center justify-center min-w-0">
                         <Teclado onKeyPress={handleKeyPress} />
                     </div>
+                    
                 </div>
             </div>
         </div>

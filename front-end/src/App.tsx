@@ -8,16 +8,16 @@ export default function App() {
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string | null>(null);
   const [sidebarAberta, setSidebarAberta] = useState<boolean>(true);
 
-  // 1. Consumindo o Hook que conecta ao seu Service/API
-  const { dados, categorias, isLoading, error, refresh } = useInventario();
+  const { dados, categorias, isLoading, error, refresh, atualizarItemLocal } = useInventario();
 
   const handleSelecionarCategoria = (categoria: string) => {
     setCategoriaSelecionada(categoria);
-    setSidebarAberta(false); // Fecha a aba para dar espaço ao teclado
+    setSidebarAberta(false);
   };
 
-  // 2. TELA DE CARREGAMENTO (UX Industrial)
-  if (isLoading) {
+  // 🌟 MUDANÇA 1: Só mostramos a tela cheia de Loading se NÃO tivermos dados ainda (primeiro carregamento)
+  // Se o isLoading for true, mas já tivermos dados na tela, é um refresh silencioso, então não mostramos essa tela.
+  if (isLoading && !dados) {
     return (
       <div className="h-screen w-full bg-slate-50 flex flex-col items-center justify-center font-sans">
         <Loader2 size={48} className="animate-spin text-orange-500 mb-4" />
@@ -29,15 +29,15 @@ export default function App() {
     );
   }
 
-  // 3. TELA DE ERRO (Resiliência)
   if (error) {
+    // ... (o seu if(error) continua idêntico) ...
     return (
       <div className="h-screen w-full bg-slate-50 flex flex-col items-center justify-center font-sans p-6 text-center">
         <AlertCircle size={64} className="text-red-500 mb-4" />
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Ops! Algo deu errado</h2>
         <p className="text-gray-500 max-w-md mb-6">{error}</p>
         <button 
-          onClick={refresh}
+          onClick={() => refresh()} // 🌟 Garante que o refresh manual avise que não é silencioso
           className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white rounded-xl font-bold shadow-md hover:bg-orange-600 transition-colors"
         >
           <RefreshCw size={20} />
@@ -49,8 +49,8 @@ export default function App() {
 
   return (
     <div className="h-screen w-full bg-slate-100 flex flex-col font-sans relative overflow-hidden">
-
-      {/* BACKDROP: Escurece o fundo quando a sidebar abre */}
+      {/* ... (o seu Backdrop, Sidebar e Header continuam idênticos) ... */}
+      
       {sidebarAberta && (
         <div 
           className="fixed inset-0 bg-slate-900/60 z-40 transition-opacity duration-300 backdrop-blur-sm"
@@ -58,7 +58,6 @@ export default function App() {
         />
       )}
 
-      {/* SIDEBAR: Desliza por cima (Overlay) */}
       <div className={`fixed inset-y-0 left-0 h-full w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-out ${
         sidebarAberta ? 'translate-x-0' : '-translate-x-full'
       }`}>
@@ -70,7 +69,6 @@ export default function App() {
         />
       </div>
 
-      {/* HEADER: Fixado no topo, nunca some */}
       <header className="w-full p-4 md:px-6 flex items-center gap-4 shrink-0 h-20 bg-white/80 backdrop-blur-md border-b border-gray-200 z-10">
         <button 
           onClick={() => setSidebarAberta(true)}
@@ -89,14 +87,14 @@ export default function App() {
         </div>
       </header>
 
-      {/* ÁREA PRINCIPAL: Ocupa o resto da tela */}
       <main className="flex-1 p-4 md:p-6 overflow-hidden">
         {categoriaSelecionada && dados ? (
           <LancamentoView 
             key={categoriaSelecionada} 
             categoria={categoriaSelecionada} 
             itensIniciais={dados.grupos[categoriaSelecionada]} 
-            dataInventario={dados.dataInventario} // <--- ADICIONE ESTA LINHA
+            dataInventario={dados.dataInventario}
+            onItemAtualizado={(item) => atualizarItemLocal(categoriaSelecionada, item)} // 🌟 MUDANÇA 2: Passamos o refresh silencioso para a view
           />
         ) : (
           <div className="h-full bg-white rounded-3xl shadow-sm border border-gray-200 flex flex-col items-center justify-center text-gray-400">

@@ -2,34 +2,40 @@ import type { TabelaProps } from "./interface";
 
 export const calcularTotaisItem = (item: any) => {
   const uniloj = item.uniloj?.trim().toUpperCase() || '';
-  const isPesoOuLitro = uniloj === 'KG' || uniloj === 'LITRO' || uniloj === 'LT';
+  const isPesoOuLitro = ['KG', 'LITRO', 'LT', 'L'].includes(uniloj);
 
   let qtdinf = 0;
   let pestot = 0;
   let custot = 0;
   
-  // Variáveis para exibição visual na tabela (MOVE 0 TO TABLECELLS...)
-  let displayQtdTotal = 0;
-  let displayPesoTotal = 0;
+  // Variáveis para exibição visual na tabela
+  let displayQtdTotal: number | string = 0;
+  let displayPesoTotal: number | string = 0;
 
   if (isPesoOuLitro) {
-    // COBOL: IF UNILOJ-WS = "KG" OR ...
+    // COBOL: COMPUTE QTDINF-WS = (QTDDSP-WS * QTDUNI_CADPRO-WS * GRAMATURA-WS) + QTDUNI-WS
     qtdinf = (item.qtddsp * item.qtduni_cadpro * item.gramatura) + item.qtduni;
-    pestot = qtdinf; // No COBOL, a fórmula do PESTOT aqui é idêntica à do QTDINF
+    
+    // Peso total é igual a qtdinf quando é KG
+    pestot = qtdinf; 
+    
+    // COBOL: COMPUTE CUSTOT-WS = QTDINF-WS * CUSMED-WS
     custot = qtdinf * item.cusmed;
 
-    // COBOL: MOVE 0 TO NUMERO-LINHA 7 (Qtd Total) e MOVE PESTOT TO 8 (Peso)
-    displayQtdTotal = 0; 
+    displayQtdTotal = '-'; // Tabela visual (Traço para Qtd Total)
     displayPesoTotal = pestot;
   } else {
-    // COBOL: ELSE
+    // COBOL: COMPUTE QTDINF-WS = (QTDDSP-WS * QTDUNI_CADPRO-WS) + QTDUNI-WS
     qtdinf = (item.qtddsp * item.qtduni_cadpro) + item.qtduni;
+    
+    // Unidade não tem peso
     pestot = 0;
+    
+    // COBOL: COMPUTE CUSTOT-WS = (QTDDSP-WS * QTDUNI_CADPRO-WS * CUSMED-WS) + (QTDUNI-WS * CUSMED-WS)
     custot = (item.qtddsp * item.qtduni_cadpro * item.cusmed) + (item.qtduni * item.cusmed);
 
-    // COBOL: MOVE 0 TO PESTOT (Linha 8) e MOVE QTDINF TO Linha 7
     displayQtdTotal = qtdinf;
-    displayPesoTotal = 0;
+    displayPesoTotal = '-'; // Tabela visual (Traço para Peso Total)
   }
 
   return { qtdinf, pestot, custot, displayQtdTotal, displayPesoTotal };
@@ -53,38 +59,31 @@ export function Tabela({ itens, itemAtivoId, onSelecionarItem }: TabelaProps) {
         </thead>
         <tbody>
           {itens.map((item) => {
-            // Verifica a unidade de medida
-            const uniloj = item.uniloj?.trim().toUpperCase() || '';
-            const isPesoOuLitro = uniloj === 'KG' || uniloj === 'LITRO' || uniloj === 'LT';
-
-            // Se for KG, QTD fica zerada/traço. Se for UN, PESO fica zerado/traço.
-            const displayQtdTotal = isPesoOuLitro ? '-' : item.qtdinf;
-            const displayPesoTotal = isPesoOuLitro ? item.pestot : '-';
-
-            // Lembre-se que as variáveis do Custo Total devem bater com a inversão
-            const custoTotal = (item.qtduni * item.qtddsp_cadpro * item.cusmed) + (item.qtddsp * item.cusmed);
+            // 1. CHAMA A FUNÇÃO MESTRA AQUI DENTRO (Ela já traz o custot certinho)
+            const totais = calcularTotaisItem(item);
 
             return (
               <tr 
                 key={item.codpro}
-                onClick={() => onSelecionarItem(item.codpro)} 
-                className={`border-b border-gray-100 cursor-pointer transition-colors 
-                ${itemAtivoId === item.codpro ? 'bg-orange-50' : 'hover:bg-gray-50'}`}
+                onClick={() => onSelecionarItem(item.codpro)}
+                className={`border-b border-gray-100 cursor-pointer transition-colors ${itemAtivoId === item.codpro ? 'bg-orange-100' : 'hover:bg-gray-50'}`}
               >
                 <td className="py-4 px-2 font-medium text-gray-800">{item.nompro}</td>
                 
-                {/* Mostra as colunas invertidas corretamente */}
-                <td className="py-4 px-2 text-center">{item.qtddsp}</td>
+                {/* Colunas de Embalagem e Display */}
+                <td className="py-4 px-2 text-center">{item.qtddsp}</td> 
                 <td className="py-4 px-2 text-center font-medium text-slate-600">
                   {item.qtduni.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </td>
                 
-                {/* Aplica a regra visual que você pediu */}
-                <td className="py-4 px-2 text-center font-bold text-blue-600">{displayQtdTotal}</td>
-                <td className="py-4 px-2 text-center font-bold text-purple-600">{displayPesoTotal}</td>
+                {/* QTD TOTAL e PESO TOTAL (Usando os valores que saíram da função) */}
+                <td className="py-4 px-2 text-center font-bold text-blue-600">{totais.displayQtdTotal}</td>
+                <td className="py-4 px-2 text-center font-bold text-purple-600">{totais.displayPesoTotal}</td>
                 
+                {/* 🌟 A CORREÇÃO ESTÁ AQUI: R$ TOTAL 🌟 */}
+                {/* Tem que usar "totais.custot" para ele respeitar a multiplicação do COBOL */}
                 <td className="py-4 px-2 text-right text-green-600">
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(custoTotal)}
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totais.custot)}
                 </td>
               </tr>
             );
