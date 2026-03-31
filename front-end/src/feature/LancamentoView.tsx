@@ -228,7 +228,7 @@ export function LancamentoView({ categoria, itensIniciais, dataInventario, onIte
                         
                         <div className="w-full max-w-65 relative">
                             <TouchInput 
-                                label={isPesoOuLitroAtual ? "Display / Peso (kg)" : "Display (Unidades)"}
+                                label={isPesoOuLitroAtual ? "Peso / Litros (Kg/L)" : "Display (Unidades)"}
                                 valor={
                                     inputAtivo === 'disp' 
                                     ? (isPesoOuLitroAtual ? formatarMascaraPeso(visor) : visor)

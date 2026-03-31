@@ -16,14 +16,16 @@ export const calcularTotaisItem = (item: any) => {
     // COBOL: COMPUTE QTDINF-WS = (QTDDSP-WS * QTDUNI_CADPRO-WS * GRAMATURA-WS) + QTDUNI-WS
     qtdinf = (item.qtddsp * item.qtduni_cadpro * item.gramatura) + item.qtduni;
     
-    // Peso total é igual a qtdinf quando é KG
-    pestot = qtdinf; 
+    // 🌟 TRAVA 1 (Matemática): Arredonda o valor real para no máximo 4 casas, cortando sujeiras do JavaScript
+    pestot = Number(qtdinf.toFixed(4)); 
     
     // COBOL: COMPUTE CUSTOT-WS = QTDINF-WS * CUSMED-WS
     custot = qtdinf * item.cusmed;
 
     displayQtdTotal = '-'; // Tabela visual (Traço para Qtd Total)
-    displayPesoTotal = pestot;
+    
+    // 🌟 TRAVA 2 (Visual): Força a tabela a exibir sempre exatas 4 casas decimais (ex: 3,0000 ou 14,8445)
+    displayPesoTotal = pestot.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
   } else {
     // COBOL: COMPUTE QTDINF-WS = (QTDDSP-WS * QTDUNI_CADPRO-WS) + QTDUNI-WS
     qtdinf = (item.qtddsp * item.qtduni_cadpro) + item.qtduni;
@@ -42,8 +44,6 @@ export const calcularTotaisItem = (item: any) => {
 };
 
 export function Tabela({ itens, itemAtivoId, onSelecionarItem }: TabelaProps) {
-  
-
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <table className="w-full text-left border-collapse">
@@ -59,8 +59,17 @@ export function Tabela({ itens, itemAtivoId, onSelecionarItem }: TabelaProps) {
         </thead>
         <tbody>
           {itens.map((item) => {
-            // 1. CHAMA A FUNÇÃO MESTRA AQUI DENTRO (Ela já traz o custot certinho)
+            // 1. CHAMA A FUNÇÃO MESTRA AQUI DENTRO
             const totais = calcularTotaisItem(item);
+            
+            // 🌟 O PULO DO GATO: Descobrir a formatação correta do Disp/Peso para a tabela
+            const uniloj = item.uniloj?.trim().toUpperCase() || '';
+            const isPesoOuLitro = ['KG', 'LITRO', 'LT', 'L'].includes(uniloj);
+            
+            // Se for peso, força 4 casas (0,0000). Se for unidade, não usa casas decimais (0).
+            const displayFormatado = isPesoOuLitro 
+              ? item.qtduni.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })
+              : item.qtduni.toString();
 
             return (
               <tr 
@@ -72,16 +81,17 @@ export function Tabela({ itens, itemAtivoId, onSelecionarItem }: TabelaProps) {
                 
                 {/* Colunas de Embalagem e Display */}
                 <td className="py-4 px-2 text-center">{item.qtddsp}</td> 
+                
+                {/* 🌟 A CORREÇÃO ESTÁ AQUI: Usa a variável que criamos acima */}
                 <td className="py-4 px-2 text-center font-medium text-slate-600">
-                  {item.qtduni.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {displayFormatado}
                 </td>
                 
-                {/* QTD TOTAL e PESO TOTAL (Usando os valores que saíram da função) */}
+                {/* QTD TOTAL e PESO TOTAL */}
                 <td className="py-4 px-2 text-center font-bold text-blue-600">{totais.displayQtdTotal}</td>
                 <td className="py-4 px-2 text-center font-bold text-purple-600">{totais.displayPesoTotal}</td>
                 
-                {/* 🌟 A CORREÇÃO ESTÁ AQUI: R$ TOTAL 🌟 */}
-                {/* Tem que usar "totais.custot" para ele respeitar a multiplicação do COBOL */}
+                {/* R$ TOTAL */}
                 <td className="py-4 px-2 text-right text-green-600">
                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totais.custot)}
                 </td>
